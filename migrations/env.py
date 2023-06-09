@@ -1,7 +1,10 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from pathlib import Path
+from sqlalchemy import engine_from_config, MetaData
+from sqlalchemy.orm import sessionmaker
+from models import Base
+
 
 from alembic import context
 
