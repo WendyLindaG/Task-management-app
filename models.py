@@ -1,23 +1,30 @@
+import click
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Table
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
-import random 
-import sys
-import re
+
 
 Base = declarative_base()
+engine = create_engine('sqlite:///tasks.db', echo=True)
+
+task_user = Table(
+    'task_user', Base.metadata,
+    Column('task_id', Integer, ForeignKey('tasks.id')),
+    Column('user_id', Integer, ForeignKey('users.id'))
+)
 
 
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
-    name = Column(String)
+    username = Column(String)
     email = Column(String)
-    project_id = Column(Integer, ForeignKey('projects.id'))
-    project = relationship("Project")
+    tasks = relationship("Task", secondary=task_user, back_populates="users")
 
-
+    def __init__(self, username, email):
+        self.username = username
+        self.email = email
 
 class Task(Base):
     __tablename__ = 'tasks'
@@ -27,23 +34,17 @@ class Task(Base):
     status = Column(String)
     due_date = Column(DateTime)
     project_id = Column(Integer, ForeignKey('projects.id'))
-
-
-class Project(Base):
-    __tablename__ = 'projects'
-    id = Column(Integer, primary_key=True)
-    name = Column(String)
-    description = Column(String)
-    tasks = relationship("Task")
-
+    users = relationship("User", secondary=task_user, back_populates="tasks")
+    comments = relationship("Comment", back_populates="task")
+                            
 
 class Comment(Base):
     __tablename__ = 'comments'
     id = Column(Integer, primary_key=True)
     content = Column(String)
-    created_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.now)
     task_id = Column(Integer, ForeignKey('tasks.id'))
-    task = relationship("Task", backref="comments")
+    task = relationship("Task", backref="all_comments")
 
 
 class TaskManager:
@@ -63,14 +64,7 @@ class TaskManager:
     def get_all_tasks(self):
         return self.session.query(Task).all()
 
-    def update_task(self, task_id, title, description, status, due_date):
-        task = self.session.query(Task).filter_by(id=task_id).first()
-        if task:
-            task.title = title
-            task.description = description
-            task.status = status
-            task.due_date = due_date
-            self.session.commit()
+
 
     def delete_task(self, task_id):
         task = self.session.query(Task).filter_by(id=task_id).first()
@@ -83,64 +77,39 @@ class TaskManager:
         self.session.close()
 
 
-class ProjectManager:
-    def __init__(self):
-        engine = create_engine('sqlite:///tasks.db')
-        Base.metadata.create_all(engine)
-        Session = sessionmaker(bind=engine)
-        self.session = Session()
+@click.group()
+def cli():
+    """Task Management CLI"""
+    pass 
 
-    def add_project(self, name, description):
-        new_project = Project(name=name, description=description)
-        self.session.add(new_project)
-        self.session.commit()
-
-    def get_all_projects(self):
-        return self.session.query(Project).all()
-
-    def update_project(self, project_id, name, description):
-        project = self.session.query(Project).filter_by(id=project_id).first()
-        if project:
-            project.name = name
-            project.description = description
-            self.session.commit()
-
-    def delete_project(self, project_id):
-        project = self.session.query(Project).filter_by(id=project_id).first()
-        if project:
-            self.session.delete(project)
-            self.session.commit()
-
-    def __del__(self):
-        self.session.close()
-
-
-# Example usage
-if __name__ == '__main__':
+@click.command()
+@click.option('--title', prompt='Task title')
+@click.option('--description', prompt='Task description')
+@click.option('--status', prompt='Task status')
+@click.option('--due_date', prompt='Task due date')
+def add_task(title, description, status, due_date):
     task_manager = TaskManager()
-    project_manager = ProjectManager()
-    
-    task_manager.add_task("Finish project", "Complete the remaining tasks", "In Progress", datetime.now())
-    task_manager.add_task("Meeting with team", "Discuss project updates", "Pending", datetime.now())
+    task_manager.add_task(title, description, status, datetime.strptime(due_date, '%Y-%m-%d'))
+    click.echo('Task added successfully.')
 
+@click.command()
+def get_all_tasks():
+    task_manager =TaskManager()
     tasks = task_manager.get_all_tasks()
     for task in tasks:
-        print(task.title)
+        click.echo(task.title)
 
-    task_manager.update_task(1, "New title", "Updated description", "Completed", datetime.now())
-    task_manager.delete_task(2)
+@click.command()
+@click.option('--task_id', prompt='Task ID')
+def delete_task(task_id):
+    task_manager = TaskManager()
+    task_manager.delete_task(int(task_id))
+    click.echo('Task deleted successfully.')
 
-    project_manager.add_project("Project A", "Description of Project A")
-    project_manager.add_project("Project B", "Description of Project B")
-
-    projects = project_manager.get_all_projects()
-    for project in projects:
-        print(project.name)
+cli.add_command(add_task)
+cli.add_command(get_all_tasks)
+cli.add_command(delete_task)
 
 
-       # Create engine and session
-engine = create_engine('sqlite:///tasks.db')
-Base.metadata.create_all(engine)
-Session = sessionmaker(bind=engine)
-session = Session() 
-
+if __name__ == '__main__':
+    cli()
