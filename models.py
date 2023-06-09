@@ -2,6 +2,9 @@ from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
+import random 
+import sys
+import re
 
 Base = declarative_base()
 
@@ -15,6 +18,7 @@ class User(Base):
     project = relationship("Project")
 
 
+
 class Task(Base):
     __tablename__ = 'tasks'
     id = Column(Integer, primary_key=True)
@@ -22,6 +26,7 @@ class Task(Base):
     description = Column(String)
     status = Column(String)
     due_date = Column(DateTime)
+    project_id = Column(Integer, ForeignKey('projects.id'))
 
 
 class Project(Base):
@@ -43,6 +48,7 @@ class Comment(Base):
 
 class TaskManager:
     def __init__(self):
+        self.tasks = []
         engine = create_engine('sqlite:///tasks.db')
         Base.metadata.create_all(engine)
         Session = sessionmaker(bind=engine)
@@ -52,6 +58,7 @@ class TaskManager:
         new_task = Task(title=title, description=description, status=status, due_date=due_date)
         self.session.add(new_task)
         self.session.commit()
+        self.tasks.append(new_task)
 
     def get_all_tasks(self):
         return self.session.query(Task).all()
@@ -70,6 +77,7 @@ class TaskManager:
         if task:
             self.session.delete(task)
             self.session.commit()
+            self.tasks.remove(task)
 
     def __del__(self):
         self.session.close()
